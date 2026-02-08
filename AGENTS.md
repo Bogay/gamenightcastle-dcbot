@@ -67,5 +67,7 @@ This is a **Node.js Discord Bot** project, "Game Night Castle Bot". It is design
 *   `commands/loadtest.js`: Tool for generating test conversations.
 
 ## Improvement TODOs
+- [ ] **Refactor: Decouple Event Handlers:** Break down `interactionCreate.js` and `messageCreate.js` into dedicated services (e.g., `TicketService`, `SuggestionService`).
 - [ ] **Migrate to Slash Commands:** Modernize the command handler to use Discord's Slash Command API (`interactionCreate`).
-- [ ] **Clear log:** Currently the logs are too verbose.
+- [ ] **Infrastructure: Structured Logging:** Replace `console.log` with a structured logger to control verbosity and unify error handling.
+- [ ] **Refactor: Extract Keep-Alive:** Move self-ping logic out of `index.js`.

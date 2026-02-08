@@ -1,21 +1,7 @@
-﻿const {
-    Events,
-    ChannelType,
-    PermissionFlagsBits,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle,
-    EmbedBuilder,
-    AttachmentBuilder
-} = require('discord.js');
-const config = require('../config/config.js');
-const llmSummaryManager = require('../utils/llmSummaryManager.js');
-
-const SUGGESTION_CHANNEL_ID = config.CHANNELS.SUGGESTION;
-const TICKET_LOG_CHANNEL_ID = config.CHANNELS.TICKET_LOG;
+const { Events } = require('discord.js');
+const TicketService = require('../services/TicketService');
+const SuggestionService = require('../services/SuggestionService');
+const SummaryService = require('../services/SummaryService');
 
 module.exports = {
     name: Events.InteractionCreate,
@@ -24,305 +10,41 @@ module.exports = {
         // ====================================================
         // 🔘 區域 1：按鈕互動處理 (Button Interactions)
         // ====================================================
-        //#region LLM Summary Approval Buttons
-        if (interaction.isButton() && interaction.customId.startsWith('summary_approve_')) {
-            await interaction.deferReply({ ephemeral: true });
-
-            try {
-                const summaryId = interaction.customId.replace('summary_approve_', '');
-                const summary = llmSummaryManager.getPendingSummary(summaryId);
-
-                if (!summary) {
-                    return await interaction.editReply({
-                        content: '❌ 找不到該摘要或已過期'
-                    });
-                }
-
-                await interaction.editReply({
-                    content: '⏳ 正在生成完整摘要...'
-                });
-
-                await llmSummaryManager.generateFullSummary(summaryId, client);
-
-                await interaction.editReply({
-                    content: '✅ 摘要已生成並發佈到摘要頻道'
-                });
-            } catch (error) {
-                console.error('[SummaryApprove] Error:', error);
-                await interaction.editReply({
-                    content: `❌ 生成摘要時出錯：${error.message}`
-                });
-            }
-            return;
-        }
-
-        if (interaction.isButton() && interaction.customId.startsWith('summary_reject_')) {
-            await interaction.deferReply({ ephemeral: true });
-
-            try {
-                const summaryId = interaction.customId.replace('summary_reject_', '');
-                await llmSummaryManager.rejectSummary(summaryId);
-
-                await interaction.editReply({
-                    content: '✅ 已忽略此摘要'
-                });
-            } catch (error) {
-                console.error('[SummaryReject] Error:', error);
-                await interaction.editReply({
-                    content: `❌ 操作時出錯：${error.message}`
-                });
-            }
-            return;
-        }
-        //#endregion
-
-        //#region 住客登記功能
         if (interaction.isButton()) {
-            
-            //#region --- 功能 A：開啟 Ticket ---
-            if (interaction.customId === 'open_ticket') {
-                await interaction.deferReply({ ephemeral: true });
+            const { customId } = interaction;
 
-                const guild = interaction.guild;
-                const user = interaction.user;
-                const category = interaction.channel.parent;
-
-                const existingChannel = guild.channels.cache.find(c => c.name === `住客申請-${user.username.toLowerCase()}`);
-                if (existingChannel) {
-                    return interaction.editReply({ content: `❌ 您已經有一個進行中的申請單：${existingChannel}` });
-                }
-
-                try {
-                    const ticketChannel = await guild.channels.create({
-                        name: `住客申請-${user.username}`,
-                        type: ChannelType.GuildText,
-                        parent: category ? category.id : null,
-                        permissionOverwrites: [
-                            { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                            { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                            { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
-                        ],
-                    });
-
-                    const closeRow = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId('close_ticket').setLabel('關閉申請單').setStyle(ButtonStyle.Danger).setEmoji('🔒')
-                    );
-
-                    // 1. 建立「樓層規範」Embed
-                    const rulesEmbed = new EmbedBuilder()
-                        .setTitle('📜 樓層規範')
-                        .setColor(0xFF0000) // 紅色 (代表重要規範)
-                        .setDescription(
-                            '1️⃣ 每位開發者皆可申請一層樓，並擁有該樓層的自主管理權\n\n' +
-                            '2️⃣ 樓層包含：一間文字頻道 + 一間語音頻道(可選)\n\n' +
-                            '3️⃣ 若為團隊申請樓層，請提交所需管理權限的人員名單\n\n' +
-                            '4️⃣ 樓層命名請勿有任何髒話、辱罵、色情等不雅字眼\n\n' +
-                            '5️⃣ 若為18禁的樓層，名稱前綴記得註記18禁符號🔞\n\n' +
-                            '6️⃣ 18禁內容嚴禁有任何未成年、圖像人物必須符合成熟特徵\n\n' +
-                            '7️⃣ 頻道分享內容不限，但請盡量以遊戲相關的討論為主\n\n' +
-                            '8️⃣ 樓層每三個月會針對活躍度進行評估，活躍度過低的頻道將會視情況隱藏，請樓層負責人主動向管理員提出申訴\n\n' +
-                            '9️⃣ 嚴禁違反社群規範，詳情請見：https://discord.com/channels/859390147110633512/859390147656679457/1257649090821488703\n\n' +
-                            '※以上規範，夜城擁有最終解釋權\n' +
-                            '-# 更新日期：2025/12/11'
-                        );
-
-                    // 2. 建立「申請格式」Embed
-                    const applyEmbed = new EmbedBuilder()
-                        .setTitle('📝 樓層申請格式')
-                        .setColor(0x00FF00) // 綠色 (代表可以開始填寫)
-                        .setDescription(
-                            '**樓層名稱：**\n' +
-                            '\n' +
-                            '**文字頻道名稱：**\n' +
-                            '\n' +
-                            '**樓層用途：**\n' +
-                            '(開發進度分享、遊戲知識分享、日常分享...等等)\n' +
-                            '\n' +
-                            '**是否需要語音頻道：**\n' +
-                            '(需要的話請填頻道名稱)\n' +
-                            '\n' +
-                            '**是否包含🔞資訊：**\n' +
-                            '\n' +
-                            '**是否希望機器人能推播提醒進度的通知：**\n' +
-                            '(每個月一次)\n' +
-                            '\n' +
-                            '**額外提醒時間：(每周/每兩周/其他)：**\n' +
-                            '\n' +
-                            '**樓層管理員：**'
-                        );
-
-                    // 3. 發送訊息 (包含 content, embeds, components)
-                    await ticketChannel.send({
-                        content: `${user} 冒險者您好！歡迎使用本服務，請詳閱規範後填寫申請表。`,
-                        embeds: [rulesEmbed, applyEmbed], // 這裡放入剛剛做好的兩張卡片
-                        components: [closeRow]
-                    });
-
-                    await interaction.editReply({ content: `✅ 請前往填寫入住申請單：${ticketChannel}` });
-
-                } catch (error) {
-                    console.error(error);
-                    await interaction.editReply({ content: "⚠️ 發生不可預期異常，請聯繫管理員。" });
-                }
+            // LLM Summary Approval
+            if (customId.startsWith('summary_approve_')) {
+                return await SummaryService.handleApprove(interaction, client);
             }
-            //#endregion
-
-            //#region --- 功能 B：關閉 Ticket ---
-            if (interaction.customId === 'close_ticket') {
-                if (!interaction.channel.name.startsWith('住客申請-')) {
-                    return interaction.reply({ content: "這不是一個有效的 Ticket 頻道。", ephemeral: true });
-                }
-                await interaction.reply("🔒 申請單將在 5 秒後關閉...");
-
-                try {
-                    // 抓取最後 100 則訊息 (如果對話很多，可以考慮循環抓取，但通常 100 夠用)
-                    const messages = await interaction.channel.messages.fetch({ limit: 100 });
-                    
-                    // 格式化訊息：[時間] 作者: 內容
-                    // reverse() 是為了讓紀錄從最早的開始排
-                    const transcript = messages.reverse().map(m => {
-                        const time = m.createdAt.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-                        const content = m.content || (m.embeds.length ? '[嵌入內容]' : '[圖片/檔案]');
-                        const attachments = m.attachments.size > 0 ? ` [附件: ${m.attachments.map(a => a.url).join(', ')}]` : '';
-                        return `[${time}] ${m.author.tag}: ${content}${attachments}`;
-                    }).join('\n');
-
-                    const logChannel = interaction.guild.channels.cache.get(TICKET_LOG_CHANNEL_ID);
-                    
-                    if (logChannel) {
-                        const embed = new EmbedBuilder()
-                            .setTitle(`🔒 申請單已關閉：${interaction.channel.name}`)
-                            .setColor(0xFF0000)
-                            .addFields(
-                                { name: '關閉者', value: interaction.user.tag, inline: true },
-                                { name: '頻道名稱', value: interaction.channel.name, inline: true },
-                                { name: '訊息數量', value: `${messages.size} 則`, inline: true }
-                            )
-                            .setTimestamp();
-
-                        // 🟢 2. 判斷長度並發送
-                        if (transcript.length < 1900) {
-                            // 如果內容不長，直接用 Code Block 發送
-                            await logChannel.send({ 
-                                embeds: [embed],
-                                content: `**📝 對話紀錄：**\n\`\`\`text\n${transcript}\n\`\`\`` 
-                            });
-                        } else {
-                            // 如果內容太長，轉成 .txt 檔案發送 (這樣才不會太長一串)
-                            const buffer = Buffer.from(transcript, 'utf-8');
-                            const attachment = new AttachmentBuilder(buffer, { name: `transcript-${interaction.channel.name}.txt` });
-                            
-                            await logChannel.send({ 
-                                embeds: [embed],
-                                content: `**📝 對話紀錄過長，已轉為檔案附件：**`,
-                                files: [attachment] 
-                            });
-                        }
-                    } else {
-                        console.warn(`⚠️ 找不到 Log 頻道 (${TICKET_LOG_CHANNEL_ID})，無法備份紀錄。`);
-                    }
-
-                } catch (err) {
-                    console.error("備份紀錄失敗:", err);
-                }
-
-                setTimeout(() => {
-                    interaction.channel.delete().catch(err => console.error("關閉頻道失敗:", err));
-                }, 5000);
+            if (customId.startsWith('summary_reject_')) {
+                return await SummaryService.handleReject(interaction);
             }
-            //#endregion
-        //#endregion
-            //#region --- 功能 C：開啟建議箱表單 (新增的部分) ---
-            if (interaction.customId === 'open_suggestion_modal') {
-                const modal = new ModalBuilder()
-                    .setCustomId('submit_suggestion')
-                    .setTitle('📝 提供您的寶貴建議');
 
-                const titleInput = new TextInputBuilder()
-                    .setCustomId('suggestion_title')
-                    .setLabel("建議主題")
-                    .setStyle(TextInputStyle.Short)
-                    .setPlaceholder("例如：希望新增更多語音頻道")
-                    .setRequired(true);
-
-                const contentInput = new TextInputBuilder()
-                    .setCustomId('suggestion_content')
-                    .setLabel("詳細內容")
-                    .setStyle(TextInputStyle.Paragraph)
-                    .setPlaceholder("請詳細描述您的想法...")
-                    .setRequired(true);
-
-                const firstActionRow = new ActionRowBuilder().addComponents(titleInput);
-                const secondActionRow = new ActionRowBuilder().addComponents(contentInput);
-
-                modal.addComponents(firstActionRow, secondActionRow);
-                
-                // 顯示表單給用戶填寫
-                await interaction.showModal(modal);
+            // Ticket System
+            if (customId === 'open_ticket') {
+                return await TicketService.handleOpenTicket(interaction, client);
             }
-            //#endregion
+            if (customId === 'close_ticket') {
+                return await TicketService.handleCloseTicket(interaction);
+            }
+
+            // Suggestion System (Open Modal)
+            if (customId === 'open_suggestion_modal') {
+                return await SuggestionService.handleOpenModal(interaction);
+            }
         }
 
         // ====================================================
         // 📝 區域 2：表單提交處理 (Modal Submits)
         // ====================================================
-        //#region 表單提交處理
         if (interaction.isModalSubmit()) {
-            
-            //#region --- 功能 D：處理建議箱送出的內容 ---
-            if (interaction.customId === 'submit_suggestion') {
-                const title = interaction.fields.getTextInputValue('suggestion_title');
-                const content = interaction.fields.getTextInputValue('suggestion_content');
+            const { customId } = interaction;
 
-                try {
-                    // 1. 使用 fetch 確保能抓到討論串 (即使它沉下去了)
-                    const targetThread = await interaction.guild.channels.fetch(SUGGESTION_CHANNEL_ID);
-
-                    if (!targetThread) {
-                        return interaction.reply({ content: "❌ 設定錯誤：找不到指定的討論串，請確認 ID 是否正確。", ephemeral: true });
-                    }
-
-                    // 2. 檢查是否為討論串類型 (Thread)
-                    if (!targetThread.isThread()) {
-                        return interaction.reply({ content: "❌ 設定錯誤：指定的 ID 不是一個討論串 (Thread)。", ephemeral: true });
-                    }
-
-                    // 3. 如果討論串被「封存/歸檔 (Archived)」了，機器人要先把它喚醒
-                    // (不然發訊息可能會失敗，或沒人看到)
-                    if (targetThread.archived) {
-                        await targetThread.setArchived(false);
-                    }
-
-                    // 4. 建立漂亮的 Embed
-                    const embed = new EmbedBuilder()
-                        .setTitle(`${title}`)
-                        .setDescription(content)
-                        .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
-                        .setColor(0xFFA500) // 橘色
-                        .addFields({ name: '\n👤 建議者', value: interaction.user.toString(), inline: true })
-                        .setTimestamp();
-
-                    // 5. 直接發送進該討論串
-                    await targetThread.send({ embeds: [embed] });
-
-                    // 6. 回覆用戶成功
-                    await interaction.reply({ content: "✅ 您的建議已送出至討論區！", ephemeral: true });
-
-                } catch (error) {
-                    console.error("發送建議至討論串失敗：", error);
-                    
-                    let errorMsg = "❌ 發送失敗，請聯繫管理員。";
-                    if (error.code === 10003) errorMsg = "❌ 找不到該討論串 (Unknown Channel)，ID 可能錯了。";
-                    if (error.code === 50001) errorMsg = "❌ 機器人沒有權限在該討論串發言。";
-
-                    // 避免重複回覆導致報錯
-                    if (!interaction.replied) {
-                        await interaction.reply({ content: errorMsg, ephemeral: true });
-                    }
-                }
+            // Suggestion System (Submit Form)
+            if (customId === 'submit_suggestion') {
+                return await SuggestionService.handleSubmit(interaction);
             }
-            //#endregion
         }
-        //#endregion
     },
 };
