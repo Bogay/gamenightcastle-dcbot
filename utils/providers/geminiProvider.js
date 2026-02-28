@@ -27,9 +27,9 @@ class GeminiProvider {
         const timeout = options.timeout || 60000;
 
         try {
-            const generativeModel = this.client.getGenerativeModel({
+            const isGemma = model.toLowerCase().includes('gemma');
+            const modelOptions = {
                 model: model,
-                systemInstruction: systemPrompt,
                 generationConfig: {
                     temperature: 0.7,
                     topP: 0.95,
@@ -37,11 +37,22 @@ class GeminiProvider {
                     maxOutputTokens: 2048,
                     responseMimeType: 'text/plain'
                 }
-            });
+            };
+
+            // Gemma and some older models don't support systemInstruction
+            if (!isGemma) {
+                modelOptions.systemInstruction = systemPrompt;
+            }
+
+            const generativeModel = this.client.getGenerativeModel(modelOptions);
+
+            const finalUserMessage = isGemma 
+                ? `${systemPrompt}\n\n${userMessage}`
+                : userMessage;
 
             // Execute with timeout
             const response = await Promise.race([
-                generativeModel.generateContent(userMessage),
+                generativeModel.generateContent(finalUserMessage),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('LLM request timeout')), timeout)
                 )

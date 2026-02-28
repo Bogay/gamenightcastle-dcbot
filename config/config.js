@@ -46,7 +46,9 @@ module.exports = {
     // rule2: 4人(含)以上 45分鐘內 8則訊息
     RULE2: { minUsers: 4, minMsgs: 8, duration: 45 * 60 * 1000, maxContribution: 2 },
     // 冷卻 24 小時
-    COOLDOWN: 24 * 60 * 60 * 1000
+    COOLDOWN: 24 * 60 * 60 * 1000,
+    // 是否使用 LLM 過濾閒聊 (Gemma 3)
+    USE_LLM_FILTER: true
   },
 
   // LLM Summary Configuration
@@ -60,7 +62,7 @@ module.exports = {
       claude: process.env.ANTHROPIC_API_KEY,
     },
     models: {
-      relevanceCheck: 'gemini-3-flash-preview',
+      relevanceCheck: 'gemma-3-27b-it',
       fullSummary: 'gemini-3-flash-preview',
       topicDiscovery: 'gemini-3-flash-preview',
     },

@@ -2,6 +2,8 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('../config/config.js');
+const llmService = require('./llmService.js');
+const conversationCollector = require('./conversationCollector.js');
 
 const STATE_FILE_PATH = path.join(__dirname, '../data/activeChatState.json');
 
@@ -12,6 +14,7 @@ const CONFIG = {
     rule1: config.ACTIVE_CHAT.RULE1,
     rule2: config.ACTIVE_CHAT.RULE2,
     cooldownTime: config.ACTIVE_CHAT.COOLDOWN,
+    useLlmFilter: config.ACTIVE_CHAT.USE_LLM_FILTER
 };
 
 // 計算最長需要的時間區間 (取兩條規則中時間較長的那個)
@@ -137,14 +140,48 @@ module.exports = {
 
         // 判斷是否達標
         if (checkRule(validMsgs, CONFIG.rule1, now) || checkRule(validMsgs, CONFIG.rule2, now)) {
-            await sendNotification(message.guild, message.channel);
+            let shouldNotify = true;
 
-            // 通知發送成功後，馬上清空該頻道的累積訊息
+            // --- LLM Chitchat Filtering (Gemma 3) ---
+            if (CONFIG.useLlmFilter) {
+                console.log(`[ActiveChat] 🚀 Threshold met in #${message.channel.name}. Performing LLM relevance check...`);
+                try {
+                    // Collect recent messages for LLM context (e.g., last 20 messages)
+                    const contextMsgs = await conversationCollector.collectMessages(message.channel, 20);
+                    const relevanceResult = await llmService.quickRelevanceCheck(contextMsgs);
+
+                    console.log(`[ActiveChat] LLM Relevance: ${relevanceResult.isRelevant} (${relevanceResult.category}) | Reason: ${relevanceResult.reason}`);
+
+                    if (!relevanceResult.isRelevant) {
+                        console.log(`[ActiveChat] 🤫 Chitchat filtered. Skipping notification.`);
+                        shouldNotify = false;
+                    }
+                } catch (llmError) {
+                    console.error(`[ActiveChat] LLM Relevance check failed:`, llmError);
+                    // On error, we default to sending notification anyway (fail-safe)
+                    console.log(`[ActiveChat] Proceeding with notification due to LLM error.`);
+                }
+            }
+
+            if (shouldNotify) {
+                await sendNotification(message.guild, message.channel);
+            }
+
+            // 通知發送成功後（或被過濾後），馬上清空該頻道的累積訊息
             // 這樣下次必須從 0 開始累積，不會因為冷卻結束就馬上再次觸發
             channelMessages.set(channelId, []);
             saveState(); // Update state
-             console.log(`[ActiveChat] 已觸發通知，清空 ${message.channel.name} 的計數器`);
+            console.log(`[ActiveChat] 計數器已清空 (#${message.channel.name})`);
         }
+    },
+
+    /**
+     * 重置所有狀態 (僅供測試使用)
+     */
+    resetState() {
+        channelMessages.clear();
+        channelCooldowns.clear();
+        console.log('[ActiveChat] State reset.');
     }
 };
 
