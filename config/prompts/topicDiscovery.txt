@@ -4,7 +4,6 @@
 1. 將這些訊息區分為不同的「討論簇」(Topic Clusters)。
 2. 每個討論簇應包含相關聯的訊息 ID。
 3. 為每個討論簇命名，並判斷其是否與「遊戲開發、技術分享、設計討論或產業新聞」相關。
-4. 給出相關性分數 (0.0 到 1.0)。
 
 請嚴格以 JSON 格式回傳，格式如下：
 {
@@ -13,7 +12,6 @@
       "topic": "討論主題名稱",
       "messageIds": ["id1", "id2", "id3"],
       "isRelevant": true,
-      "confidence": 0.95,
       "category": "technics/art/design/news/resource/other",
       "reason": "簡短說明理由"
     }

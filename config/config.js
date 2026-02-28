@@ -74,7 +74,6 @@ module.exports = {
     filters: {
       minMessages: parseInt(process.env.LLM_MIN_MESSAGES || '10'),
       lookbackWindow: parseInt(process.env.LLM_LOOKBACK_WINDOW || '100'),
-      relevanceThreshold: 0.7,
       maturationDays: 3,
       scanLimitDays: 7,
     },

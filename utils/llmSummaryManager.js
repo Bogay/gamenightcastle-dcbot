@@ -125,7 +125,7 @@ module.exports = {
                 const clusters = await llmService.discoverTopics(messages);
                 
                 for (const cluster of clusters) {
-                    if (!cluster.isRelevant || cluster.confidence < llmConfig.filters.relevanceThreshold) continue;
+                    if (!cluster.isRelevant) continue;
 
                     // Map IDs back to message objects
                     const clusterMsgs = messages.filter(m => cluster.messageIds.includes(m.id));
@@ -168,7 +168,6 @@ module.exports = {
                         relevanceResult: {
                             isRelevant: true,
                             category: cluster.category,
-                            confidence: cluster.confidence,
                             reason: cluster.reason
                         },
                         status: 'pending_approval',
@@ -241,13 +240,10 @@ module.exports = {
             console.log(`[LLMSummaryManager] Relevance Result:
   - isRelevant: ${relevanceResult.isRelevant}
   - category: ${relevanceResult.category}
-  - confidence: ${relevanceResult.confidence}
-  - threshold: ${llmConfig.filters.relevanceThreshold}
   - reason: ${relevanceResult.reason}`);
 
-            if (!relevanceResult.isRelevant ||
-                relevanceResult.confidence < llmConfig.filters.relevanceThreshold) {
-                console.log(`[LLMSummaryManager] ❌ Not relevant (confidence: ${relevanceResult.confidence})`);
+            if (!relevanceResult.isRelevant) {
+                console.log(`[LLMSummaryManager] ❌ Not relevant`);
                 return;
             }
 
@@ -437,7 +433,6 @@ module.exports = {
                     { name: '訊息數', value: stats.totalMessages.toString(), inline: true },
                     { name: '參與人數', value: stats.uniqueAuthors.toString(), inline: true },
                     { name: '分類', value: this._getCategoryLabel(relevanceResult.category), inline: true },
-                    { name: '相關度', value: `${(relevanceResult.confidence * 100).toFixed(0)}%`, inline: true },
                     { name: '原因', value: relevanceResult.reason || '無', inline: true },
                     {
                         name: '預估成本',
@@ -539,7 +534,7 @@ module.exports = {
                     inline: true
                 })
                 .setFooter({
-                    text: `相關度: ${(relevanceResult.confidence * 100).toFixed(0)}% | 成本: ${fullSummary.tokenCount} tokens (~$${(fullSummary.tokenCount / 1000000 * 0.35).toFixed(6)})${config.LLM_SUMMARY.dryRun ? ' (Dry Run)' : ''}`
+                    text: `成本: ${fullSummary.tokenCount} tokens (~$${(fullSummary.tokenCount / 1000000 * 0.35).toFixed(6)})${config.LLM_SUMMARY.dryRun ? ' (Dry Run)' : ''}`
                 })
                 .setTimestamp();
 

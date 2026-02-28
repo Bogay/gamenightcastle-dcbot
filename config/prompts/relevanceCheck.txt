@@ -17,7 +17,6 @@
 
 請根據對話內容仔細判斷，然後輸出一個 JSON 對象，包含以下字段：
 - isRelevant (boolean): 對話是否與遊戲開發相關
-- confidence (number): 信心分數，0 到 1 之間
 - category (string): 分類，可選值包括 "technics"（技術）、"art"（美術）、"design"（設計）、"news"（新聞）、"resource"（資源）、"other"（其他）
 - reason (string): 簡短說明判斷理由（20字內）
 
